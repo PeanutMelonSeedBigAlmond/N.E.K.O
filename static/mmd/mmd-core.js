@@ -296,12 +296,18 @@ class MMDCore {
             THREE.ColorManagement.enabled = true;
         }
 
+        const powerPreference = typeof window.__NEKO_RESOLVE_AVATAR_WEBGL_POWER_PREFERENCE__ === 'function'
+            ? window.__NEKO_RESOLVE_AVATAR_WEBGL_POWER_PREFERENCE__()
+            : (['default', 'high-performance', 'low-power'].includes(String(window.__NEKO_WEBGL_POWER_PREFERENCE__ || '').trim())
+                ? String(window.__NEKO_WEBGL_POWER_PREFERENCE__).trim()
+                : (window.__LANLAN_IS_ELECTRON_PET__ ? 'default' : 'high-performance'));
+
         try {
             this.manager.renderer = new THREE.WebGLRenderer({
                 canvas: this.manager.canvas,
                 alpha: true,
                 antialias: true,
-                powerPreference: 'high-performance',
+                powerPreference,
                 precision: 'highp',
                 preserveDrawingBuffer: false,
                 depth: true

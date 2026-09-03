@@ -61,6 +61,21 @@ const LIVE2D_INTERACTIVE_FPS_HOLD_MS = 900;         // 活动后维持满帧的�
 const LIVE2D_IDLE_FPS_GOVERNOR_INTERVAL_MS = 300;   // 活动探测轮询间隔
 const LIVE2D_RETURN_BALL_VIEWPORT_MAX_SIZE = 200;
 
+// Do not force the discrete GPU for a transparent Electron pet window. In
+// hybrid graphics mode the display compositor may be driven by the iGPU;
+// rendering on the dGPU then adds a cross-adapter copy for every frame and
+// makes both N.E.K.O. and dwm.exe appear busy. Chromium's default preference
+// lets it select the adapter associated with the window's display. An
+// explicit global override remains available for diagnostics and power users.
+function resolveAvatarWebGLPowerPreference() {
+    const configured = String(window.__NEKO_WEBGL_POWER_PREFERENCE__ || '').trim();
+    return ['default', 'high-performance', 'low-power'].includes(configured)
+        ? configured
+        : (window.__LANLAN_IS_ELECTRON_PET__ ? 'default' : 'high-performance');
+}
+
+window.__NEKO_RESOLVE_AVATAR_WEBGL_POWER_PREFERENCE__ = resolveAvatarWebGLPowerPreference;
+
 function isDesktopLinuxX11Runtime() {
     return !!(window.__NEKO_DESKTOP_RUNTIME__ && window.__NEKO_DESKTOP_RUNTIME__.isLinuxX11);
 }
@@ -322,6 +337,7 @@ class Live2DManager {
             autoStart: true,
             transparent: true,
             backgroundAlpha: 0,
+            powerPreference: resolveAvatarWebGLPowerPreference(),
             resolution: this._getRenderResolutionForQuality(getEffectiveLive2DRenderQuality(window.renderQuality)),
             autoDensity: true
         };
