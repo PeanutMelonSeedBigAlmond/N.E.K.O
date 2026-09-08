@@ -17,7 +17,7 @@ on:
       electron_repo:
         description: 'Electron frontend repo (owner/repo)'
         required: false
-        default: 'Project-N-E-K-O/N.E.K.O.-PC'
+        default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'
       electron_ref:
         description: 'Electron repo branch/tag/commit'
         required: false
@@ -46,7 +46,7 @@ jobs:
   # Step 0: Calculate version
   # ──────────────────────────────────────────────
   version:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.calc.outputs.VERSION }}
@@ -74,7 +74,7 @@ jobs:
   # Step 1: Build Python backend with Nuitka (Linux only)
   # ──────────────────────────────────────────────
   build-python:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     needs: version
     strategy:
       fail-fast: false
@@ -488,7 +488,7 @@ jobs:
   # Step 2: Build Electron desktop app (Linux only)
   # ──────────────────────────────────────────────
   build-electron:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     needs: [version, build-python]
     strategy:
       fail-fast: false
@@ -506,7 +506,7 @@ jobs:
       - name: Checkout Electron frontend
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.electron_repo || 'Project-N-E-K-O/N.E.K.O.-PC' }}
+          repository: ${{ github.event.inputs.electron_repo || 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC' }}
           ref: ${{ github.event.inputs.electron_ref || 'main' }}
           token: ${{ secrets.ELECTRON_REPO_TOKEN || secrets.GITHUB_TOKEN }}
           path: electron-app

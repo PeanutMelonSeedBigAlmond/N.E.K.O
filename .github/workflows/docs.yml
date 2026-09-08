@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,7 +59,7 @@ jobs:
           path: docs/.vitepress/dist
 
   deploy:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -72,7 +72,7 @@ jobs:
 
   indexnow:
     name: Notify IndexNow
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     needs: deploy
     runs-on: ubuntu-latest
     permissions:

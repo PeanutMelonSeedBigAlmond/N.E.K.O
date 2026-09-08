@@ -9,7 +9,7 @@ on:
       neko-repository:
         required: false
         type: string
-        default: Project-N-E-K-O/N.E.K.O
+        default: PeanutMelonSeedBigAlmond/N.E.K.O
       neko-ref:
         required: true
         type: string

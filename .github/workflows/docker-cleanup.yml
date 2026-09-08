@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   cleanup-ghcr:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O'
     runs-on: ubuntu-latest
     steps:
       # 换用 manifest-aware 的 dataaxiom/ghcr-cleanup-action：

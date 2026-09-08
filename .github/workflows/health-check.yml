@@ -8,7 +8,7 @@ on:
 
 jobs:
   health-check:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O' && github.ref == 'refs/heads/main'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       # ── 检查 www.lanlan.app (US) ──

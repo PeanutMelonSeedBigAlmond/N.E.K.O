@@ -11,7 +11,7 @@ on:
       electron_repo:
         description: 'Electron frontend repo (owner/repo)'
         required: false
-        default: 'Project-N-E-K-O/N.E.K.O.-PC'
+        default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'
         type: string
       electron_ref:
         description: 'Electron repo branch/tag/commit'
@@ -49,7 +49,7 @@ on:
       electron_repo:
         description: 'Electron frontend repo (owner/repo)'
         required: false
-        default: 'Project-N-E-K-O/N.E.K.O.-PC'
+        default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'
       electron_ref:
         description: 'Electron repo branch/tag/commit'
         required: false
@@ -91,7 +91,7 @@ jobs:
   # Step 0: Calculate version
   # ──────────────────────────────────────────────
   version:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O' || inputs.allow_fork_build
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' || inputs.allow_fork_build
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.calc.outputs.VERSION }}
@@ -121,7 +121,7 @@ jobs:
   # Step 1: Build Python backend with Nuitka
   # ──────────────────────────────────────────────
   build-python:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O' || inputs.allow_fork_build
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' || inputs.allow_fork_build
     needs: version
     strategy:
       fail-fast: false
@@ -913,7 +913,7 @@ jobs:
   # Step 2: Build Electron desktop app
   # ──────────────────────────────────────────────
   build-electron:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O' || inputs.allow_fork_build
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' || inputs.allow_fork_build
     needs: [version, build-python]
     strategy:
       fail-fast: false
@@ -929,7 +929,7 @@ jobs:
       - name: Checkout Electron frontend
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.electron_repo || 'Project-N-E-K-O/N.E.K.O.-PC' }}
+          repository: ${{ inputs.electron_repo || 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC' }}
           ref: ${{ inputs.electron_ref || 'main' }}
           token: ${{ secrets.ELECTRON_REPO_TOKEN || secrets.GITHUB_TOKEN }}
           path: electron-app
@@ -1248,7 +1248,7 @@ jobs:
   # Step 3: Publish Nightly Release
   # ──────────────────────────────────────────────
   nightly:
-    if: (github.repository == 'Project-N-E-K-O/N.E.K.O' || inputs.allow_fork_build) && github.event_name != 'push' && always() && !cancelled() && needs.build-python.result == 'success' && needs.build-electron.result != 'failure'
+    if: (github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' || inputs.allow_fork_build) && github.event_name != 'push' && always() && !cancelled() && needs.build-python.result == 'success' && needs.build-electron.result != 'failure'
     needs: [version, build-python, build-electron]
     runs-on: ubuntu-latest
     permissions:

@@ -12,7 +12,7 @@ jobs:
     # A stable release must be deliberately published after local testing.
     # Drafts and prereleases are never validated by this workflow.
     if: >-
-      github.repository == 'Project-N-E-K-O/N.E.K.O' &&
+      github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' &&
       !github.event.release.draft &&
       !github.event.release.prerelease &&
       startsWith(github.event.release.tag_name, 'v')

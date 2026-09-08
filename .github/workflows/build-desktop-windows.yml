@@ -10,7 +10,7 @@ on:
       electron_repo:
         description: 'Electron frontend repo (owner/repo)'
         required: false
-        default: 'Project-N-E-K-O/N.E.K.O.-PC'
+        default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'
       electron_ref:
         description: 'Electron repo branch/tag/commit'
         required: false

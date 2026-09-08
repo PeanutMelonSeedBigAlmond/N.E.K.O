@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   test:
-    if: github.repository == 'Project-N-E-K-O/N.E.K.O'
+    if: github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -74,7 +74,7 @@ jobs:
 
   report:
     if: >-
-      github.repository == 'Project-N-E-K-O/N.E.K.O' &&
+      github.repository == 'PeanutMelonSeedBigAlmond/N.E.K.O' &&
       github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest

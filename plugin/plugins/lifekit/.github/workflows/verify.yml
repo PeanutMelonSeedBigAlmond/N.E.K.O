@@ -12,8 +12,8 @@ permissions:
 
 jobs:
   verify:
-    uses: Project-N-E-K-O/N.E.K.O/.github/workflows/plugin-market-verify.yml@main
+    uses: PeanutMelonSeedBigAlmond/N.E.K.O/.github/workflows/plugin-market-verify.yml@main
     with:
       plugin-id: lifekit
-      neko-repository: Project-N-E-K-O/N.E.K.O
+      neko-repository: PeanutMelonSeedBigAlmond/N.E.K.O
       neko-ref: main
