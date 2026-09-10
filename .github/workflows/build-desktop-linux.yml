@@ -6,6 +6,11 @@ name: Build Desktop App (Linux only)
 # Linux bundle on demand without spinning up the full Win+macOS+Linux matrix.
 # Artifacts are uploaded only — no nightly Release is published (the main
 # workflow owns the `nightly` tag).
+#
+# 迁移状态：本文件尚未迁移到 electron-forge 前端。第 583 行的
+# `npx electron-builder` 对重写后的 PeanutMelonSeedBigAlmond/N.E.K.O.-PC 无效
+# （它是 electron-forge 应用，只有 npm run package），因此这个 workflow 现在跑不通。
+# 迁移方案见 build-desktop.yml 顶部的说明；Windows 一侧已经完成，可作为模板。
 
 on:
   workflow_dispatch:

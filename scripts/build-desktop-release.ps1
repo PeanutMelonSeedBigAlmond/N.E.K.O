@@ -80,7 +80,9 @@ function Write-Utf8File {
 function Get-PortableTarget {
     param([Parameter(Mandatory = $true)] [string]$BuildPlatform)
     switch ($BuildPlatform) {
-        'windows' { return @{ Key = 'win'; NodePlatform = 'win32'; Bundle = 'dist/win-unpacked' } }
+        # electron-forge 的产物目录是 out/<productName>-<platform>-<arch>，由
+        # scripts/forge-windows-portable.mjs 自己发现；这里给空串表示"由脚本解析"。
+        'windows' { return @{ Key = 'win'; NodePlatform = 'win32'; Bundle = '' } }
         'macos' {
             if ($Architecture -eq 'arm64') {
                 return @{ Key = 'mac_arm64'; NodePlatform = 'darwin'; Bundle = 'dist/portable-stage/mac-arm64/N.E.K.O.app' }
@@ -90,6 +92,16 @@ function Get-PortableTarget {
         'linux' { return @{ Key = 'linux_x64'; NodePlatform = 'linux'; Bundle = 'dist/portable-stage/linux-unpacked' } }
         default { throw "Unsupported build platform: $BuildPlatform" }
     }
+}
+
+function Get-ForgePortableScript {
+    # 与 CI 共用同一份打包实现（.github/workflows/build-desktop.yml 的
+    # "Package Windows Portable update assets"）。
+    $scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/forge-windows-portable.mjs'
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        throw "Forge Portable packaging script is missing: $scriptPath"
+    }
+    return $scriptPath
 }
 
 function Get-BackendPath {
@@ -222,18 +234,23 @@ try {
     }
     Write-Utf8File -Path $packagePath -Content (($package | ConvertTo-Json -Depth 100) + "`n")
 
-    $portableUpdateDirectory = Join-Path $ElectronPath 'dist/portable-update'
-    if (Test-Path -LiteralPath $portableUpdateDirectory) {
-        throw "Portable output already exists: $portableUpdateDirectory. Remove it after preserving any prior build, then retry."
-    }
+    # Portable 资产就写在 dist/ 下（forge 打包脚本的 --out），manifest 与 ZIP 同级。
     $distDirectory = Join-Path $ElectronPath 'dist'
+    $portableUpdateDirectory = $distDirectory
+    $existingManifests = @()
+    if (Test-Path -LiteralPath $distDirectory -PathType Container) {
+        $existingManifests = @(Get-ChildItem -LiteralPath $distDirectory -Filter '*_manifest.json' -File)
+    }
+    if ($existingManifests.Count -gt 0) {
+        # 与旧脚本同一条保护：上一次未归档的 Portable 产物不能静默被覆盖。
+        throw "Portable output already exists. Remove $($existingManifests[0].FullName) after preserving any prior build, then retry."
+    }
     if (Test-Path -LiteralPath $distDirectory) {
         if (-not (Test-Path -LiteralPath $distDirectory -PathType Container)) {
             throw "Expected Electron output path to be a directory: $distDirectory"
         }
-        # electron-builder does not reliably remove versioned artifacts from an
-        # earlier build. Clear its dedicated output directory only after the
-        # portable-update guard above has protected any unarchived output.
+        # 打包脚本不清理历史版本产物（旧 NSIS/zip 会一直留在 dist/），在确认没有未归档
+        # 的 Portable 产物之后整个清空，避免旧版本文件被当成这次发布的一部分。
         Remove-Item -LiteralPath $distDirectory -Recurse -Force
     }
 
@@ -244,26 +261,22 @@ try {
     $env:CSC_IDENTITY_AUTO_DISCOVERY = 'true'
     $archArgs = if ($buildPlatform -eq 'macos') { @("--$Architecture") } else { @() }
 
-    if ($buildPlatform -eq 'windows') {
-        Invoke-Checked node 'scripts/build-electron-distribution.js' 'windows' '--dir' '--publish' 'never'
-    }
-    else {
-        Invoke-Checked node 'scripts/build-electron-distribution.js' $buildPlatform @archArgs '--publish' 'never'
-        $env:NEKO_PORTABLE_BUILD = '1'
-        Invoke-Checked node 'scripts/build-electron-distribution.js' $buildPlatform '--dir' @archArgs '--publish' 'never' '-c.directories.output=dist/portable-stage'
+    if ($buildPlatform -ne 'windows') {
+        # 本仓库的桌面构建已迁到 electron-forge 前端，目前只完成 Windows 一条腿
+        # （见 .github/workflows/build-desktop.yml 的迁移说明）。这里显式失败，
+        # 而不是静默走已失效的 electron-builder 入口：后者只会以 MODULE_NOT_FOUND
+        # 收场，且会把"没迁移"误报成"构建坏了"。
+        throw "Only windows is migrated to the Forge packaging path. macOS/Linux still need makers for .dmg / .AppImage / .deb plus an .app archive path; see scripts/forge-windows-portable.mjs and the workflow notes."
     }
 
-    $updateArgs = @('scripts/create-portable-update.js', '--version', $Version, '--out', $portableUpdateDirectory)
-    if ($buildPlatform -eq 'windows') {
-        $updateArgs += @('--dir', $target.Bundle)
-    }
-    else {
-        $updateArgs += @('--dir', $target.Bundle, '--platform', $target.NodePlatform, '--arch', $Architecture)
-    }
-    if ($previousManifest) {
-        $updateArgs += @('--previous', $previousManifest)
-    }
-    Invoke-Checked node @updateArgs
+    # 与 CI 同一条路径：npm run package -> scripts/forge-windows-portable.mjs。
+    Invoke-Checked npm 'run' 'package'
+    $previousArgs = if ($previousManifest) { @('--previous', $previousManifest) } else { @() }
+    Invoke-Checked node (Get-ForgePortableScript) @(
+        '--dir', $ElectronPath,
+        '--version', $Version,
+        '--out', (Join-Path $ElectronPath 'dist')
+    ) @previousArgs
 
     if ($buildPlatform -eq 'linux') {
         $appImages = @(Get-ChildItem -LiteralPath (Join-Path $ElectronPath 'dist') -Filter '*.AppImage' -File)

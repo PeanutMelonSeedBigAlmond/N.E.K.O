@@ -16,8 +16,19 @@ and never creates a tag, GitHub Release, upload, or update-service request.
 
 Before running it, build the matching Nuitka backend on the native host and put
 it in the adjacent `N.E.K.O.-PC/bin` directory (`projectneko_server.exe` on
-Windows, `projectneko_server` on macOS/Linux). The script packages that backend
-with the locally available Electron signing identity.
+Windows, `projectneko_server` on macOS/Linux). On Windows the script runs
+`npm run package` followed by `scripts/forge-windows-portable.mjs` — the same path
+CI takes, so the Portable manifest, full package, and differential package are
+byte-for-byte the same shape as the cloud build's.
+
+> **Migration status: Windows only.** The frontend moved from electron-builder to
+> electron-forge and only the Windows leg has been migrated. `-Platform macos` /
+> `linux` now fails fast instead of falling back to the retired electron-builder
+> entrypoints; those platforms still need makers for `.dmg` / `.AppImage` / `.deb`
+> plus an `.app` archive path.
+>
+> Authenticode signing of Windows artifacts is not wired up yet either (there is no
+> Forge hook for it), so Windows assets are currently published unsigned.
 
 The publishing script also reuses the trusted manifest verifier from the sibling
 `N.E.K.O.-PC/src/main/portable-update.js` checkout. If the PC repository is stored

@@ -9,7 +9,11 @@ description: 在各原生主机上构建、签名并验证桌面资产，再由�
 
 在每个目标平台主机上各执行一次 `scripts/build-desktop-release.ps1`。该脚本会为 Portable manifest 签名，将产物暂存到 `release-assets/<version>/`，但不会创建标签、GitHub Release、上传文件或请求更新服务。
 
-运行前，请在对应原生主机上构建同版本 Nuitka 后端，并将其放在相邻的 `N.E.K.O.-PC/bin` 目录：Windows 为 `projectneko_server.exe`，macOS/Linux 为 `projectneko_server`。脚本会用本机构建可用的 Electron 签名身份，将该后端一并打包。
+运行前，请在对应原生主机上构建同版本 Nuitka 后端，并将其放在相邻的 `N.E.K.O.-PC/bin` 目录：Windows 为 `projectneko_server.exe`，macOS/Linux 为 `projectneko_server`。Windows 上脚本会依次执行 `npm run package` 与 `scripts/forge-windows-portable.mjs`——与 CI 同一条路径，因而 Portable 清单、完整包与差分包完全同构。
+
+> **迁移状态：目前只有 Windows 可用。** 前端已从 electron-builder 换成 electron-forge，脚本只完成了 Windows 一条腿；`-Platform macos` / `linux` 会直接报错退出，而不是回落到已失效的 electron-builder 入口。macOS/Linux 需要先补上 `.dmg` / `.AppImage` / `.deb` 的 maker 与 `.app` 归档路径。
+>
+> 另外，Windows 产物的 Authenticode 签名尚未接线（Forge 侧没有对应 hook），因此当前不会真正签名。
 
 ```powershell
 ./scripts/build-desktop-release.ps1 `

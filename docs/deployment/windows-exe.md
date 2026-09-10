@@ -21,3 +21,14 @@ The desktop workflow combines:
 - config, templates, static assets, plugins, local embedding/tiktoken assets, and browser resources required by packaging checks.
 
 Preferred ports may change when occupied. Automation should read desktop status/port configuration rather than hardcode 48911.
+
+## Electron frontend and packaging chain
+
+The Windows frontend comes from `PeanutMelonSeedBigAlmond/N.E.K.O.-PC` (overridable via the `electron_repo` / `electron_ref` inputs). It is an **electron-forge** application: its only build command is `npm run package`, and it writes `out/<productName>-<platform>-<arch>`.
+
+The Portable assets (full package, differential package, manifest) are produced by this repository's `scripts/forge-windows-portable.mjs`, whose contract is the frontend's `src/main/portable-update.js` (`validatePortableManifest`): manifest `N.E.K.O_<version>_win_manifest.json`, package `N.E.K.O_<version>_win.zip`, differential `N.E.K.O_<from>_to_<to>_win_delta.zip`, and the archive entry set must match the manifest `files` exactly.
+
+At packaging time the backend binary has already been downloaded to `electron-app/bin/projectneko_server.exe`; the script moves it to `resources/bin/`, which is the only location the packaged frontend loads it from.
+
+Not migrated yet: the macOS/Linux legs (no makers for `.dmg` / `.AppImage` / `.deb`) and Authenticode signing. `build-desktop-windows.yml` is always Windows-only, so the former does not affect it; the latter means `skip_signing=false` currently produces the same output as `true`.
+

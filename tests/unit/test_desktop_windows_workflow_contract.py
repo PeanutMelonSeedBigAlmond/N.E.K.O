@@ -65,12 +65,9 @@ def test_reusable_build_honors_signing_inputs_and_distribution_wrapper() -> None
     workflow = _load_workflow(CROSS_PLATFORM_WORKFLOW)
     build_steps = _steps_by_name(workflow, "build-electron")
 
-    disable_macos_signing = build_steps["Disable macOS code signing"]
-    assert disable_macos_signing["if"] == (
-        "runner.os == 'macOS' && "
-        "(github.event_name == 'schedule' || inputs.skip_signing == 'true')"
-    )
-
+    # Windows 驱动的是 electron-forge 前端的 `npm run package`，产物布局
+    # out/<productName>-<platform>-<arch>；electron-builder 的 build-distribution
+    # 入口已随前端重写消失，任何残留都会在 CI 上以 MODULE_NOT_FOUND 回归。
     unsigned_windows = build_steps[
         "Build Electron app (Windows ZIP Portable directory, unsigned)"
     ]
@@ -78,10 +75,10 @@ def test_reusable_build_honors_signing_inputs_and_distribution_wrapper() -> None
         "runner.os == 'Windows' && "
         "(github.event_name == 'schedule' || inputs.skip_signing == 'true')"
     )
-    assert unsigned_windows["run"] == (
-        "node scripts/build-electron-distribution.js windows --dir --publish never"
-    )
-    assert unsigned_windows["env"]["CSC_IDENTITY_AUTO_DISCOVERY"] == "false"
+    assert unsigned_windows["run"] == "npm run package"
+    assert unsigned_windows["working-directory"] == "electron-app"
+    # electron-builder 的签名变量现在没有任何消费者，留着只会误导。
+    assert unsigned_windows["env"].get("CSC_IDENTITY_AUTO_DISCOVERY") is None
     assert "WIN_CSC_LINK" not in unsigned_windows["env"]
     assert "WIN_CSC_KEY_PASSWORD" not in unsigned_windows["env"]
 
@@ -92,20 +89,62 @@ def test_reusable_build_honors_signing_inputs_and_distribution_wrapper() -> None
         "runner.os == 'Windows' && github.event_name != 'schedule' "
         "&& inputs.skip_signing != 'true'"
     )
-    assert signed_windows["run"] == (
-        "node scripts/build-electron-distribution.js windows --dir --publish never"
+    assert signed_windows["run"] == "npm run package"
+    assert signed_windows["working-directory"] == "electron-app"
+    # 签名目前没有接线（前端 forge.config.js 里没有 osxSign / 签名 hook），
+    # 因此这里不能假装证书变量还能生效。
+    assert signed_windows["env"].get("WIN_CSC_LINK") is None
+
+    # 两条构建步骤覆盖了全部 Windows 情况，不能留下「两个都不跑」的空档，
+    # 否则下载后端的步骤会白跑而 dist/ 里什么都没有。
+    assert unsigned_windows["if"] != signed_windows["if"]
+
+    # 打包与 Portable 清单由本仓库脚本承担，必须在两条构建步骤之后运行。
+    packaging = build_steps["Package Windows Portable update assets"]
+    assert packaging["if"] == "runner.os == 'Windows'"
+    assert "scripts/forge-windows-portable.mjs" in packaging["run"]
+    assert "--out electron-app/dist" in packaging["run"]
+    assert packaging["env"]["RELEASE_VERSION"] == (
+        "${{ needs.version.outputs.version }}"
     )
-    assert signed_windows["env"]["WIN_CSC_LINK"] == "${{ secrets.WIN_CSC_LINK }}"
-    assert signed_windows["env"]["WIN_CSC_KEY_PASSWORD"] == (
-        "${{ secrets.WIN_CSC_KEY_PASSWORD }}"
+    assert "${{ needs.version.outputs.version }}" not in packaging["run"]
+
+    step_names = [step.get("name") for step in workflow["jobs"]["build-electron"]["steps"]]
+    unsigned_index = step_names.index(
+        "Build Electron app (Windows ZIP Portable directory, unsigned)"
     )
+    signed_index = step_names.index(
+        "Build Electron app (Windows ZIP Portable directory, signed)"
+    )
+    packaging_index = step_names.index("Package Windows Portable update assets")
+    assert unsigned_index < packaging_index
+    assert signed_index < packaging_index
+    # 差分包要用基线清单，所以打包必须排在下载基线之后。
+    assert step_names.index("Download previous Portable manifests") < packaging_index
+    assert packaging_index < step_names.index(
+        "Create Windows Portable full and differential update assets"
+    )
+    assert packaging_index < step_names.index("Upload desktop artifact")
 
     distribution = build_steps["Build Electron app (macOS/Linux)"]
-    assert distribution["run"] == (
-        "node scripts/build-electron-distribution.js "
-        "${{ matrix.builder_platform }} ${{ matrix.portable_arch_args }} "
-        "${{ matrix.builder_target_args }} --publish never"
+    # 非 Windows 腿尚未迁移：守卫必须显式失败，而不是静默回落到已失效的 builder 入口。
+    assert "is not migrated yet" in distribution["run"]
+    assert distribution["run"].strip().endswith("exit 1")
+
+    # 旧前端的打包入口不能留在任何被执行的行里。macOS/Linux 那两步仍调用旧前端脚本，
+    # 属尚未迁移的部分，由上面的守卫拦住（保留文本是为了迁移时能直接对照），
+    # 因此这里只扫 run 命令，不扫解释这段历史的注释。
+    build_runs = "\n".join(
+        step.get("run", "") for step in workflow["jobs"]["build-electron"]["steps"]
     )
+    assert "build-electron-distribution.js" not in build_runs
+    windows_runs = "\n".join(
+        step.get("run", "")
+        for step in workflow["jobs"]["build-electron"]["steps"]
+        if step.get("if", "").startswith("runner.os == 'Windows'")
+    )
+    assert "create-portable-update.js" not in windows_runs
+    assert "npm run package" in windows_runs
 
     nightly_steps = _steps_by_name(workflow, "nightly")
     windows_nightly = nightly_steps["Create or update Windows nightly release"]
@@ -191,8 +230,15 @@ def test_debug_build_values_are_runtime_inputs_not_test_defaults() -> None:
     assert "allow_fork_build:" in windows_workflow
     assert "allow_fork_build:" in cross_platform_workflow
     assert "inputs.allow_fork_build" in cross_platform_workflow
-    assert "'Project-N-E-K-O/N.E.K.O.-PC'" in cross_platform_workflow
-    assert "default: 'Project-N-E-K-O/N.E.K.O.-PC'" in windows_workflow
+    # 前端默认仓库是 electron-forge 重写后的 PeanutMelonSeedBigAlmond/N.E.K.O.-PC。
+    # 两处输入默认值必须一致：只用 workflow_call 默认值的那份（build-desktop.yml）
+    # 在被 build-desktop-windows.yml 调用时拿到的是后者的输入。
+    assert "default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'" in windows_workflow
+    assert "default: 'PeanutMelonSeedBigAlmond/N.E.K.O.-PC'" in cross_platform_workflow
+    assert (
+        "repository: ${{ inputs.electron_repo || "
+        "'PeanutMelonSeedBigAlmond/N.E.K.O.-PC' }}"
+    ) in cross_platform_workflow
     assert "default: 'main'" in windows_workflow
     assert "default: false" in windows_workflow
 

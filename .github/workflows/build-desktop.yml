@@ -1,5 +1,23 @@
 name: Build Desktop App (Cross-Platform)
 
+# 迁移状态（前端 electron-builder -> electron-forge）
+# ---------------------------------------------------------------------------
+# 前端仓库 PeanutMelonSeedBigAlmond/N.E.K.O.-PC 是从零重写的 electron-forge 应用：
+# 只提供 `npm run package`，产物在 out/<productName>-<platform>-<arch>，既没有
+# electron-builder，也没有它的 scripts/build-electron-distribution.js 与
+# scripts/create-portable-update.js。
+#
+# 已迁移：Windows（build-electron 的 Windows 腿）—— `npm run package` + 本仓库的
+#   scripts/forge-windows-portable.mjs（写 resources/neko-distribution.json、把后端
+#   二进制放到 resources/bin/、生成 Portable ZIP 与清单），清单规则对齐前端
+#   src/main/portable-update.js 的 validatePortableManifest。
+# 未迁移：macOS / Linux —— 该腿的构建步骤现在会显式失败（前端 forge.config.js 目前
+#   只有 @electron-forge/maker-zip，产不出 .dmg / .AppImage / .deb，也还没有 .app 的
+#   归档路径）。它们只在 windows_only=false 时运行；build-desktop-windows.yml 恒为
+#   true，所以 Windows-only 流程不受影响。
+# 未接线：Authenticode 代码签名 —— 旧链路走 electron-builder 的 WIN_CSC_LINK，Forge
+#   侧还没有对应 hook，skip_signing 的两个变体目前产出相同。
+
 on:
   workflow_call:
     inputs:
@@ -918,7 +936,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","platform":"win","portable_key":"win","builder_platform":"windows","portable_dir":"dist/win-unpacked","python_artifact":"python-backend-win","electron_args":"--win","artifact_name":"desktop-win-x64"}]' || '[{"os":"windows-latest","platform":"win","portable_key":"win","builder_platform":"windows","portable_dir":"dist/win-unpacked","python_artifact":"python-backend-win","electron_args":"--win","artifact_name":"desktop-win-x64"},{"os":"macos-15-intel","platform":"mac-x64","portable_key":"mac_x64","builder_platform":"macos","portable_arch_args":"--x64","portable_dir":"dist/portable-stage/mac/N.E.K.O.app","python_artifact":"python-backend-mac-x64","electron_args":"--mac --x64","artifact_name":"desktop-mac-x64"},{"os":"macos-latest","platform":"mac-arm64","portable_key":"mac_arm64","builder_platform":"macos","portable_arch_args":"--arm64","portable_dir":"dist/portable-stage/mac-arm64/N.E.K.O.app","python_artifact":"python-backend-mac-arm64","electron_args":"--mac --arm64","artifact_name":"desktop-mac-arm64"},{"os":"ubuntu-latest","platform":"linux","portable_key":"linux_x64","builder_platform":"linux","portable_arch_args":"--x64","portable_dir":"dist/portable-stage/linux-unpacked","python_artifact":"python-backend-linux","electron_args":"--linux","artifact_name":"desktop-linux-x64"},{"os":"ubuntu-24.04-arm","platform":"linux-arm64","portable_key":"linux_arm64","builder_platform":"linux","portable_arch_args":"--arm64","builder_target_args":"-c.linux.target=AppImage -c.linux.target=deb -c.linux.target=tar.gz","skip_portable_channel":true,"portable_dir":"dist/portable-stage/linux-arm64-unpacked","python_artifact":"python-backend-linux-arm64","electron_args":"--linux --arm64","artifact_name":"desktop-linux-arm64","experimental":true}]') }}
+        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","platform":"win","portable_key":"win","portable_dir":"","python_artifact":"python-backend-win","artifact_name":"desktop-win-x64"}]' || '[{"os":"windows-latest","platform":"win","portable_key":"win","portable_dir":"","python_artifact":"python-backend-win","artifact_name":"desktop-win-x64"},{"os":"macos-15-intel","platform":"mac-x64","portable_key":"mac_x64","builder_platform":"macos","portable_arch_args":"--x64","portable_dir":"dist/portable-stage/mac/N.E.K.O.app","python_artifact":"python-backend-mac-x64","electron_args":"--mac --x64","artifact_name":"desktop-mac-x64"},{"os":"macos-latest","platform":"mac-arm64","portable_key":"mac_arm64","builder_platform":"macos","portable_arch_args":"--arm64","portable_dir":"dist/portable-stage/mac-arm64/N.E.K.O.app","python_artifact":"python-backend-mac-arm64","electron_args":"--mac --arm64","artifact_name":"desktop-mac-arm64"},{"os":"ubuntu-latest","platform":"linux","portable_key":"linux_x64","builder_platform":"linux","portable_arch_args":"--x64","portable_dir":"dist/portable-stage/linux-unpacked","python_artifact":"python-backend-linux","electron_args":"--linux","artifact_name":"desktop-linux-x64"},{"os":"ubuntu-24.04-arm","platform":"linux-arm64","portable_key":"linux_arm64","builder_platform":"linux","portable_arch_args":"--arm64","builder_target_args":"-c.linux.target=AppImage -c.linux.target=deb -c.linux.target=tar.gz","skip_portable_channel":true,"portable_dir":"dist/portable-stage/linux-arm64-unpacked","python_artifact":"python-backend-linux-arm64","electron_args":"--linux --arm64","artifact_name":"desktop-linux-arm64","experimental":true}]') }}
 
     runs-on: ${{ matrix.os }}
     # 同 build-python：linux-arm64 是试验腿，失败不应让 nightly 发布判红
@@ -973,14 +991,11 @@ jobs:
         shell: bash
         run: |
           npm ci || npm install
-          # The electron repo's own `dist*` scripts go through `npm run`, so its
-          # scripts/build-electron-distribution.js can spawn a bare
-          # `electron-builder` and let npm's PATH injection find it. We invoke
-          # that script with plain `node`, which gets no such PATH — the spawn
-          # then dies with ENOENT. Put the local bin dir on PATH ourselves so
-          # every call site in this job resolves the same binary npm would.
-          # Not $PWD: on the Windows runner bash reports a /d/a/... MSYS path,
-          # which the runner cannot put on the process PATH.
+          # 前端自己的 `npm run package` 走 npm，因此它的 bin 目录已经会被 npm 注入
+          # PATH；这里再把本地 bin 目录显式挂上，是为了下面用裸 `node` 调用的脚本
+          # （它们在 npm 之外运行，拿不到那份注入）。
+          # 不是 $PWD：Windows runner 的 bash 报的是 /d/a/... MSYS 路径，runner 无法
+          # 把它放进进程 PATH。
           echo "$GITHUB_WORKSPACE/electron-app/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Update version in package.json
@@ -1007,106 +1022,39 @@ jobs:
             dpkg \
             fakeroot
 
-      # Explicitly disable macOS code signing via package.json patch
-      # N.E.K.O.-PC has hardenedRuntime, afterSign (notarize.js), and entitlements
-      # which all require a valid signing identity; disable them all for CI builds
-      - name: Disable macOS code signing
-        if: runner.os == 'macOS' && (github.event_name == 'schedule' || inputs.skip_signing == 'true')
-        working-directory: electron-app
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.build = pkg.build || {};
-            pkg.build.mac = pkg.build.mac || {};
-            pkg.build.mac.identity = null;
-            pkg.build.mac.hardenedRuntime = false;
-            delete pkg.build.mac.entitlements;
-            delete pkg.build.mac.entitlementsInherit;
-            delete pkg.build.afterSign;
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            console.log('macOS code signing fully disabled');
-          "
-
-      # Linux .deb requires a maintainer email; N.E.K.O.-PC package.json
-      # only has author name without email, so patch it here
-      - name: Set Linux deb maintainer
-        if: runner.os == 'Linux'
-        working-directory: electron-app
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.build = pkg.build || {};
-            pkg.build.linux = pkg.build.linux || {};
-            pkg.build.linux.maintainer = 'Project N.E.K.O. <projectneko@yahoo.com>';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            console.log('Set Linux deb maintainer');
-          "
-
-      # Windows Portable is a ZIP containing the complete unpacked Electron
-      # directory. Building --dir gives the updater stable file boundaries.
+      # ── Windows：electron-forge 前端 ───────────────────────────────────
+      # 前端从 electron-builder 换成了 electron-forge（N.E.K.O.-PC 只提供
+      # `npm run package`），产物布局是 out/<productName>-<platform>-<arch>。
+      # 真正的打包与 Portable 清单由本仓库的 scripts/forge-windows-portable.mjs
+      # 承担：它对齐前端 src/main/portable-update.js 的校验规则（顶层 files、
+      # 资产名模板、ZIP 条目集合与清单完全一致）。
+      #
+      # 两条步骤按 skip_signing 二选一：目前 Forge 侧还没有 Authenticode 接线，
+      # 两条命令相同，差别只在「有签名证书可检测」这一信号上；等前端补上签名 hook
+      # 后，signed 变体才会真正产出已签名产物。
       - name: Build Electron app (Windows ZIP Portable directory, unsigned)
         if: runner.os == 'Windows' && (github.event_name == 'schedule' || inputs.skip_signing == 'true')
         working-directory: electron-app
-        run: node scripts/build-electron-distribution.js windows --dir --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run package
 
       - name: Build Electron app (Windows ZIP Portable directory, signed)
         if: runner.os == 'Windows' && github.event_name != 'schedule' && inputs.skip_signing != 'true'
         working-directory: electron-app
-        run: node scripts/build-electron-distribution.js windows --dir --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'true'
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npm run package
 
-      # `builder_target_args` 只有 linux-arm64 非空。N.E.K.O.-PC 的 package.json 把
-      # build.linux.target 三个 target 的 arch 写死成 ["x64"]，而 electron-builder 的
-      # computeArchToTargetNamesMap 只在 CLI 显式给了 target 名时才无视配置里的 arch：
-      # 光传 `--arm64` 会解析成 {arm64: [], x64: [AppImage, deb, tar.gz]}，也就是在
-      # arm64 机器上打出一套 x64 产物，文件名和真正的 x64 腿逐字相同，在 nightly 扁平的
-      # release/ 目录里互相覆盖。重复的 -c.linux.target= 把目标列表整个换掉，解析结果
-      # 才是 {arm64: [AppImage, deb, tar.gz]}；x64 腿传空串，行为不变。
+      # 旧实现靠 electron-builder：patch package.json 的 build.mac.* 来关掉签名。
+      # 现在的 N.E.K.O.-PC 是 electron-forge 前端，package.json 里没有 build 段，
+      # 这段 patch 只会凭空造出一个 electron-builder 才读的键，因此移除。
+      # 按迁移范围，非 Windows 腿整体由下面的守卫拦住（windows_only=true 时不触发）。
       - name: Build Electron app (macOS/Linux)
         if: runner.os != 'Windows'
-        working-directory: electron-app
-        run: node scripts/build-electron-distribution.js ${{ matrix.builder_platform }} ${{ matrix.portable_arch_args }} ${{ matrix.builder_target_args }} --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ (github.event_name == 'schedule' || inputs.skip_signing == 'true') && 'false' || 'true' }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      # Build a separate marked unpacked tree for the self-managed Portable
-      # channel. On macOS the marker is added by afterPack before signing.
-      # skip_portable_channel 只有 linux-arm64 为 true：N.E.K.O.-PC 的 getTargetKey()
-      # 对 linux + arm64 返回 null，下面两个 create-portable-update.js 步骤会直接抛
-      # `Unsupported Portable target: linux-arm64` / `Invalid AppImage target`。把 arm64
-      # 接进 Portable 自更新通道要同时改闭源的 N.E.K.O.-PC（targetKey、manifest 资产名
-      # 正则、客户端解析），是独立决定；在那之前 arm64 只出 AppImage/deb/tar.gz 原始
-      # 产物，不进增量自更新。这一步的 --dir 产物只被那两步消费，一并跳过。
-      - name: Build Electron app (macOS/Linux Portable directory)
-        if: runner.os != 'Windows' && matrix.skip_portable_channel != true
-        working-directory: electron-app
-        run: node scripts/build-electron-distribution.js ${{ matrix.builder_platform }} --dir ${{ matrix.portable_arch_args }} --publish never -c.directories.output=dist/portable-stage
-        env:
-          NEKO_PORTABLE_BUILD: '1'
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ (github.event_name == 'schedule' || inputs.skip_signing == 'true') && 'false' || 'true' }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "::error title=macOS/Linux desktop build is not migrated yet::This workflow now drives the electron-forge frontend, and only the Windows leg has been migrated. Run it with windows_only=true, or finish the macOS/Linux migration first (they need makers for .dmg / .AppImage / .deb and an .app archive path)."
+          exit 1
 
       - name: Download previous Portable manifests
         if: (startsWith(github.ref, 'refs/tags/v') || inputs.previous_portable_release != '') && matrix.skip_portable_channel != true
@@ -1149,28 +1097,73 @@ jobs:
             fi
           fi
 
-      # 三个 Portable 更新步骤都用 `PREVIOUS_ARGS` 这个可能为空的数组来传可选的
-      # `--previous`。展开必须写成 `${PREVIOUS_ARGS[@]+"${PREVIOUS_ARGS[@]}"}`：
-      # macOS runner 的 /bin/bash 是 3.2，在 `set -u` 下展开空数组会直接报
-      # `PREVIOUS_ARGS[@]: unbound variable`（bash 4.4 才修）。写成 `"${PREVIOUS_ARGS[@]}"`
-      # 在 Linux / Git Bash（bash 5）上是绿的，只有 macOS 两个 job 会红 —— #2439 就是
-      # 这样让 nightly 桌面构建的 mac-x64 / mac-arm64 连续红了下去。
+      # 后端二进制由 actions/download-artifact 落在 electron-app/bin/，打包脚本把它
+      # 搬进 <app>/resources/bin/ —— 前端 backend-runtime.js 在打包态只读那里，
+      # 而 forge.config.js 的 extraResource 会把 bin/ 拷贝到 resources/ 下。
+      # 必须排在 "Download previous Portable manifests" 之后：差分包要用那份基线。
+      - name: Package Windows Portable update assets
+        if: runner.os == 'Windows'
+        working-directory: .            # 脚本在本仓库 scripts/ 下，不在前端 checkout 里
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PREVIOUS_ARGS=()
+          if [[ -f electron-app/previous-portable/previous-win-manifest.json ]]; then
+            PREVIOUS_ARGS=(--previous electron-app/previous-portable/previous-win-manifest.json)
+          fi
+          node scripts/forge-windows-portable.mjs \
+            --dir electron-app \
+            --version "$RELEASE_VERSION" \
+            --out electron-app/dist \
+            "${PREVIOUS_ARGS[@]+"${PREVIOUS_ARGS[@]}"}"
+
+      # 下面这两个 macOS/Linux 步骤尚未迁移（仍调用 electron-builder 前端的
+      # create-portable-update.js），由更上面的守卫在非 Windows 腿上一并拦住；
+      # 保留文本是为了迁移时能直接对照。
+      # 它们用 `PREVIOUS_ARGS` 这个可能为空的数组传可选的 `--previous`，展开必须写成
+      # `${PREVIOUS_ARGS[@]+"${PREVIOUS_ARGS[@]}"}`：macOS runner 的 /bin/bash 是 3.2，
+      # 在 `set -u` 下展开空数组会直接报 `PREVIOUS_ARGS[@]: unbound variable`
+      # （bash 4.4 才修）。写成 `"${PREVIOUS_ARGS[@]}"` 在 Linux / Git Bash（bash 5）上
+      # 是绿的，只有 macOS 两个 job 会红 —— #2439 就是这样让 mac 两条腿连续红下去。
+      # 产物已由上面的打包步骤写好（forge 前端没有 create-portable-update.js）。
+      # 这一步只做存在性校验：清单缺失意味着夜间发布会发不出可自更新的 Windows 包，
+      # 那是必须当场变红的，而不是等用户端更新时才暴露。
       - name: Create Windows Portable full and differential update assets
         if: runner.os == 'Windows'
         working-directory: electron-app
         shell: bash
         run: |
           set -euo pipefail
-          PREVIOUS_ARGS=()
-          if [[ -f previous-portable/previous-win-manifest.json ]]; then
-            PREVIOUS_ARGS=(--previous previous-portable/previous-win-manifest.json)
+          shopt -s nullglob
+          manifests=(dist/N.E.K.O_*_win_manifest.json)
+          zips=(dist/N.E.K.O_*_win.zip)
+          if [[ ${#manifests[@]} -eq 0 ]]; then
+            echo "::error::no Windows Portable manifest in dist/; Package Windows Portable update assets did not run"
+            exit 1
           fi
-          PORTABLE_VERSION="$(node -p "require('./package.json').version")"
-          node scripts/create-portable-update.js \
-            --dir dist/win-unpacked \
-            --version "$PORTABLE_VERSION" \
-            --out dist/portable-update \
-            ${PREVIOUS_ARGS[@]+"${PREVIOUS_ARGS[@]}"}
+          if [[ ${#zips[@]} -eq 0 ]]; then
+            echo "::error::no Windows Portable ZIP in dist/"
+            exit 1
+          fi
+          echo "Portable manifest: ${manifests[0]}"
+          echo "Portable package : ${zips[0]}"
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            if (manifest.product !== 'N.E.K.O' || manifest.platform !== 'win32'
+              || manifest.distribution !== 'archive-portable') {
+              console.error('unexpected Portable manifest identity: ' + JSON.stringify({
+                product: manifest.product, platform: manifest.platform,
+                distribution: manifest.distribution,
+              }));
+              process.exit(1);
+            }
+            console.log('entries: ' + manifest.files.length
+              + ', version: ' + manifest.version
+              + ', deltas: ' + (manifest.deltas || []).length);
+          " "${manifests[0]}"
 
       - name: Create macOS/Linux Portable directory update assets
         if: runner.os != 'Windows' && matrix.skip_portable_channel != true
@@ -1232,7 +1225,6 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            electron-app/dist/*.exe
             electron-app/dist/*.dmg
             electron-app/dist/*.zip
             electron-app/dist/*.AppImage
